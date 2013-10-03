@@ -1,125 +1,100 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngineInternal;
 
 namespace Kerbopolis
 {
-    [KSPAddon(KSPAddon.Startup.Flight,false)]
-    public class Kerbopolis:MonoBehaviour
+    [KSPAddon(KSPAddon.Startup.SpaceCentre, true)]
+    public class Kerbopolis : MonoBehaviour
     {
         void Start()
-        {
-            Util.DebugPrint("Starting Kerbopolis");
-            gameObject.AddComponent<CityGenerator>();
-            transform.parent = FlightGlobals.getMainBody().transform;
-            pqs=gameObject.AddComponent<PQSCity>();
-            pqs.repositionToSphere = true;
-            pqs.repositionToSphereSurface = true;
-            pqs.reorientToSphere=true;
-            radialPos=FlightGlobals.getMainBody().transform.InverseTransformPoint(FlightGlobals.ActiveVessel.transform.position);
-            radialPos.Normalize();
-            pqs.repositionRadial = radialPos;
-            pqs.repositionRadiusOffset = 0;
-            pqs.sphere = FlightGlobals.getMainBody().pqsController;
-            pqs.frameDelta = 1;
-            pqs.reorientInitialUp = initialUp;
-            pqs.reorientFinalAngle = 0;
-            pqs.modEnabled = true;
-            pqs.reorientFinalAngle = 0;
-            pqs.repositionRadiusOffset = 0;
-            pqs.OnSetup();
-            pqs.Orientate();
+		{
+			Util.DebugPrint ("Starting Kerbopolis");
+						
+			Shader diffuse = Shader.Find ("Diffuse");
+			Shader emissiveDiffuse = Shader.Find ("KSP/Emissive/Diffuse");
+			Color nightLightColour;
+			
+			ConfigNode config = GameDatabase.Instance.GetConfigNode ("Kerbopolis/Config/KERBOPOLIS");
+		
+			CityGenerator.baseMaterial = new Material (diffuse);
+			if (config.HasValue ("baseTexture")) {
+				CityGenerator.baseMaterial.mainTexture = GameDatabase.Instance.GetTexture (config.GetValue ("baseTexture", 0), false);
+				Util.DebugPrint ("Set Base Texture");
+			}
+			CityGenerator.roofMaterial = new Material (diffuse);
+			if (config.HasValue ("roofTexture"))
+				CityGenerator.roofMaterial.mainTexture = GameDatabase.Instance.GetTexture (config.GetValue ("roofTexture", 0), false);
+			CityGenerator.roadMaterial = new Material (diffuse);
+			if (config.HasValue ("roadTexture"))
+				CityGenerator.roadMaterial.mainTexture = GameDatabase.Instance.GetTexture (config.GetValue ("roadTexture", 0), false);
+			CityGenerator.grassMaterial = new Material (diffuse);
+			if (config.HasValue ("grassTexture"))
+				CityGenerator.grassMaterial.mainTexture = GameDatabase.Instance.GetTexture (config.GetValue ("grassTexture", 0), false);
+			if(config.HasValue("nightLightColour"))
+				nightLightColour = ConfigNode.ParseVector4(config.GetValue("nightLightColour"));
+			else
+				nightLightColour=new Color(1,0.82f,0f,1f);
+			Util.DebugPrint ("Setting wall textures");
+			string[] wallTextures = config.GetValues ("wallTexture");
+			Util.DebugPrint ("Got: " + wallTextures.Length.ToString () + " Wall Textures");
+			ProceduralBuilding.SideMaterials = new Material[wallTextures.Length];
+			Util.DebugPrint ("Initialised Texture Array");
+			for (int i = 0; i < wallTextures.Length; i++) {
+				Util.DebugPrint ("Setting Wall Texture: " + i.ToString () + " " + wallTextures [i]);
+                string[] textureComponents = wallTextures[i].Split(',');
+                if (textureComponents.Length > 1)
+                {
+                    ProceduralBuilding.SideMaterials [i]=new Material(emissiveDiffuse);
+                    ProceduralBuilding.SideMaterials [i].SetTexture("_MainTex",GameDatabase.Instance.GetTexture (textureComponents[0], false));
+                    ProceduralBuilding.SideMaterials [i].SetTexture("_Emissive",GameDatabase.Instance.GetTexture (textureComponents[1], false));
+					ProceduralBuilding.SideMaterials [i].SetColor("_EmissiveColor",nightLightColour);
+                }
+                else{
+				    ProceduralBuilding.SideMaterials [i] = new Material (diffuse);
+				    ProceduralBuilding.SideMaterials [i].mainTexture = GameDatabase.Instance.GetTexture (wallTextures [i], false);
+                }
+            }
+			Util.DebugPrint ("Loaded Textures");
+			
+			ConfigNode[] cityConfigs=config.GetNodes("CITY");
+			cities=new List<CityGenerator>();
+            Util.DebugPrint("Found "+cityConfigs.Length+" Cities");
+			foreach(ConfigNode cityConfig in cityConfigs){
+                Util.DebugPrint("Loading city...");
+				GameObject city=new GameObject();
+				CityGenerator gen=city.AddComponent<CityGenerator> ();
+                string bodyName = cityConfig.GetValue("body");
+                CelestialBody body = FlightGlobals.Bodies.Find(b => b.GetName() == bodyName);
+                if (!body)
+                    body = FlightGlobals.getMainBody();
+                float lat=float.Parse(cityConfig.GetValue("latitude"));
+				Util.DebugPrint("Lat:\t"+lat.ToString());
+                float lon = float.Parse(cityConfig.GetValue("longitude"));
+				Util.DebugPrint("Lon:\t"+lon.ToString());
+                float rot=float.Parse(cityConfig.GetValue("rotation"));
+				Util.DebugPrint("rot:\t"+rot.ToString());
+                float alt = float.Parse(cityConfig.GetValue("altitude"));
+				Util.DebugPrint("alt:\t"+alt.ToString());
+                Vector2 size = ConfigNode.ParseVector2(cityConfig.GetValue("size"));
+				Util.DebugPrint("size:\t"+size.ToString());
+                int seed = int.Parse(cityConfig.GetValue("seed"));
+                float minBlockSize = float.Parse(cityConfig.GetValue("minBlockSize"));
+                int maxSplit = int.Parse(cityConfig.GetValue("maxSplit"));
+                int splitPasses = int.Parse(cityConfig.GetValue("splitPasses"));
+                float visibleRange = float.Parse(cityConfig.GetValue("visibleRange"));
+                gen.initialiseCity(body,lat,lon,alt,rot,size,seed,minBlockSize,maxSplit,splitPasses,visibleRange);
+				cities.Add(gen);
+                Util.DebugPrint("Loaded City");
+			}
             
-            windowPos = new Rect(100, 100, 100, 100);
-        }
-        PQSCity pqs;
+			windowPos = new Rect (100, 100, 100, 100);
+		}
+
+        private List<CityGenerator> cities;
+
         Rect windowPos;
-
-        Vector3 radialPos;
-        Vector3 initialUp = Vector3.up;
-        void Update()
-        {
-        }
-
-        void OnGUI()
-        {
-            windowPos=GUILayout.Window(1, windowPos, drawWindow, "Move City",GUILayout.Width(400));
-        }
-
-        float Latitude
-        {
-            get {
-                radialPos.Normalize();
-                return Mathf.Rad2Deg*Mathf.Asin(radialPos.normalized.y);
-            }
-            set {
-                radialPos.y = Mathf.Sin(Mathf.Deg2Rad * value);
-                radialPos.Normalize();
-            }
-        }
-
-        float Longitude
-        {
-            get {
-                radialPos.Normalize();
-                return Mathf.Rad2Deg * Mathf.Atan2(radialPos.z, radialPos.x);
-            }
-            set {
-                radialPos.Normalize();
-                radialPos.x = Mathf.Cos(Mathf.Deg2Rad * value);
-                radialPos.z = Mathf.Sin(Mathf.Deg2Rad * value);
-            }
-        }
-
-        void drawWindow(int windowID)
-        {
-            GUILayout.BeginVertical();
-                GUILayout.Label("Initial Up");
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("X: ", GUILayout.ExpandWidth(false));
-                    initialUp.x=GUILayout.HorizontalSlider(initialUp.x, -1, 1,GUILayout.ExpandWidth(true));
-                    GUILayout.Label(initialUp.x.ToString());
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Y: ", GUILayout.ExpandWidth(false));
-                    initialUp.y = GUILayout.HorizontalSlider(initialUp.y, -1, 1, GUILayout.ExpandWidth(true));
-                    GUILayout.Label(initialUp.y.ToString());
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Z: ", GUILayout.ExpandWidth(false));
-                    initialUp.z = GUILayout.HorizontalSlider(initialUp.z, -1, 1, GUILayout.ExpandWidth(true));
-                    GUILayout.Label(initialUp.z.ToString());
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Angle: ", GUILayout.ExpandWidth(false));
-                pqs.reorientFinalAngle = GUILayout.HorizontalSlider(pqs.reorientFinalAngle, -1, 1, GUILayout.ExpandWidth(true));
-                GUILayout.EndHorizontal();
-                GUILayout.Label("Radial Pos");
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Lat: ", GUILayout.Width(50));
-                if (GUILayout.Button("-")) Latitude -= 0.01f;
-                GUILayout.Label(Latitude.ToString(),GUILayout.Width(100));
-                if (GUILayout.Button("+")) Latitude += 0.01f;
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Lon: ", GUILayout.Width(50));
-                if (GUILayout.Button("-")) Longitude -= 0.01f;
-                GUILayout.Label(Longitude.ToString(), GUILayout.Width(100));
-                if (GUILayout.Button("+")) Longitude += 0.01f;
-                GUILayout.EndHorizontal();
-            pqs.reorientInitialUp = initialUp;
-            pqs.repositionRadial = radialPos;
-            pqs.repositionRadiusOffset = 0;
-            if (GUILayout.Button("Orientate"))
-            {
-                Vector3 pos = transform.localPosition;
-                print(transform.localPosition);
-                pqs.Orientate();
-                print(transform.localPosition);
-                //transform.localPosition = pos;
-            }
-            GUILayout.EndVertical();
-        }
     }
 }

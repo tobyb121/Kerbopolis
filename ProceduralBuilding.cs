@@ -38,13 +38,26 @@ public class ProceduralBuilding : MonoBehaviour {
 	
 	private static System.Random _rand=new System.Random(20891);
 	
-	private Material SideMaterial;
+	private Material _sideMaterial;
+	public Material SideMaterial{
+		get{
+			return _sideMaterial;	
+		}
+	}
 	public static Material[] SideMaterials;
 	public Material BaseMaterial;
 	public Material RoofMaterial;
 	
+	private MeshFilter meshFilter;
+	private MeshRenderer meshRenderer;
+	
+	void Awake() {
+		meshFilter = gameObject.AddComponent<MeshFilter>();
+		meshRenderer=gameObject.AddComponent<MeshRenderer>();	
+		_sideMaterial=SideMaterials[_rand.Next(SideMaterials.Length)];
+	}
+	
 	void Start () {
-		SideMaterial=SideMaterials[_rand.Next(SideMaterials.Length)];
 		int shopIndex=_rand.Next(3);
 		
 		if(_height==0) _height = (float)(minHeight + (maxHeight - minHeight) * _rand.NextDouble()*heightMultiplier);
@@ -139,17 +152,15 @@ public class ProceduralBuilding : MonoBehaviour {
 		Mesh mesh=new Mesh();
 		mesh.vertices=polys;
 		mesh.subMeshCount=3;
-		mesh.SetTriangles(trisBase,0);
-		mesh.SetTriangles(trisSides,1);
+		mesh.SetTriangles(trisBase,1);
+		mesh.SetTriangles(trisSides,0);
 		mesh.SetTriangles(trisTop,2);
 		mesh.RecalculateNormals();
 		mesh.uv=uv;
 		
-		MeshFilter meshFilter = gameObject.AddComponent<MeshFilter>();
-		meshFilter.mesh=mesh;
 		
-		MeshRenderer renderer=gameObject.AddComponent<MeshRenderer>();
-		renderer.materials=new Material[]{BaseMaterial,SideMaterial,RoofMaterial};
+		meshFilter.mesh=mesh;
+		meshRenderer.materials=new Material[]{_sideMaterial,BaseMaterial,RoofMaterial};
 
         gameObject.layer = 15;
         gameObject.AddComponent<BoxCollider>();
